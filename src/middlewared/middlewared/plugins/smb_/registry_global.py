@@ -22,6 +22,7 @@ DEFAULT_GLOBAL_PARAMETERS = {
     "registry shares": "Yes"
 }
 
+
 class SMBService(Service):
 
     class Config:

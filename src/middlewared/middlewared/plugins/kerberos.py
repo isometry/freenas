@@ -932,7 +932,6 @@ class KerberosKeytabService(CRUDService):
         else:
             for idx, line in enumerate(kt_list_output.splitlines()):
                 fields = line.split()
-                #'date': time.strptime(fields[1], '%m-%d-%y'),
                 keytab_entries.append({
                     'slot': idx+1,
                     'kvno': fields[0],

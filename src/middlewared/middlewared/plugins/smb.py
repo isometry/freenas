@@ -343,7 +343,7 @@ class SMBService(SystemServiceService):
         """
         ret = None
         try:
-            ret  = await self.middleware.call('sharing.smb.reg_getparm', section, parm)
+            ret = await self.middleware.call('sharing.smb.reg_getparm', section, parm)
         except Exception as e:
             if not section.upper() == 'GLOBAL':
                 raise CallError(f'Attempt to query smb4.conf parameter [{parm}] failed with error: {e}')

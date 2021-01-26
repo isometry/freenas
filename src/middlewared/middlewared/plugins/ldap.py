@@ -1013,7 +1013,6 @@ class LDAPService(ConfigService):
                 continue
             rv[k] = v
 
-        prefix = "ldaps://" if data["ssl"] == "ON" else "ldap://"
         uri_string = " ".join(data["uri_list"])
         rv.update({
             "passdb backend": f'ldapsam:"{uri_string}"',
