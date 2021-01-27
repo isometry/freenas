@@ -400,7 +400,7 @@ class ActiveDirectoryService(ConfigService):
                 "AD domain name is required."
             )
 
-    @private
+    @accepts()
     async def config(self):
         ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
         if ha_mode != SMBHAMODE.CLUSTERED:
@@ -530,6 +530,7 @@ class ActiveDirectoryService(ConfigService):
         machine account is generated. It is used for all future
         LDAP / AD interaction and the user-provided credentials are removed.
         """
+        await self.middleware.call("smb.cluster_check")
         verrors = ValidationErrors()
         old = await self.config()
         new = old.copy()
@@ -573,12 +574,6 @@ class ActiveDirectoryService(ConfigService):
                     f"Failed to validate domain configuration: {e}"
                 )
 
-        ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
-        if ha_mode == SMBHAMODE.CLUSTERED:
-            ctdb_is_healthy = await self.middleware.call('ctdb.general.healthy')
-            if not ctdb_is_healthy:
-                raise CallError("Active directory configuration may only be changed with healthy cluster.")
-
         new = await self.ad_compress(new)
 
         """
@@ -586,6 +581,7 @@ class ActiveDirectoryService(ConfigService):
         in non-clustered, this will be ctdb, in clustered case we'll write the
         ad config to secrets.tdb.
         """
+        ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
         if ha_mode != SMBHAMODE.CLUSTERED:
             id = new.pop("id")
             await self.middleware.call(
@@ -727,6 +723,7 @@ class ActiveDirectoryService(ConfigService):
         Start AD service. In 'UNIFIED' HA configuration, only start AD service
         on active storage controller.
         """
+        await self.middleware.call("smb.cluster_check")
         ad = await self.config()
         smb = await self.middleware.call('smb.config')
         smb_ha_mode = await self.middleware.call('smb.reset_smb_ha_mode')
@@ -863,6 +860,7 @@ class ActiveDirectoryService(ConfigService):
 
     @private
     async def stop(self):
+        await self.middleware.call("smb.cluster_check")
         ad = await self.config()
         await self.middleware.call('datastore.update', self._config.datastore, ad['id'], {'ad_enable': False})
         await self.set_state(DSStatus['LEAVING'])

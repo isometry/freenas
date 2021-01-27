@@ -519,17 +519,32 @@ class SMBService(SystemServiceService):
         if await self.middleware.call('cache.has_key', 'SMB_HA_MODE'):
             return await self.middleware.call('cache.get', 'SMB_HA_MODE')
 
-        if not await self.middleware.call('system.is_freenas') and await self.middleware.call('failover.licensed'):
+        gl_enabled = (await self.middleware.call('service.query', [('service', '=', 'glusterd')], {'get': True}))['enable']
+
+        if gl_enabled:
+            hamode = SMBHAMODE['CLUSTERED'].name
+        elif not await self.middleware.call('system.is_freenas') and await self.middleware.call('failover.licensed'):
             system_dataset = await self.middleware.call('systemdataset.config')
             if system_dataset['pool'] != await self.middleware.call('boot.pool_name'):
                 hamode = SMBHAMODE['UNIFIED'].name
             else:
                 hamode = SMBHAMODE['LEGACY'].name
+
         else:
             hamode = SMBHAMODE['STANDALONE'].name
 
         await self.middleware.call('cache.put', 'SMB_HA_MODE', hamode)
         return hamode
+
+    @private
+    async def cluster_check(self):
+        ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
+        if ha_mode != SMBHAMODE.CLUSTERED:
+            return
+
+        ctdb_healthy = await self.middleware.call('ctdb.general.healthy')
+        if not ctdb_healthy:
+            raise CallError("SMB-related changes are not permitted while cluster unhealthy.")
 
     @private
     async def reset_smb_ha_mode(self):
@@ -712,6 +727,7 @@ class SMBService(SystemServiceService):
 
         new = old.copy()
         new.update(data)
+        await self.middleware.call("smb.cluster_check")
 
         verrors = ValidationErrors()
         ad_enabled = (await self.middleware.call('activedirectory.get_state') != "DISABLED")
@@ -743,10 +759,6 @@ class SMBService(SystemServiceService):
             await self.compress(new)
             await self._update_service(old, new)
         else:
-            ctdb_healthy = await self.middleware.call('ctdb.general.healthy')
-            if not ctdb_healthy:
-                raise CallError("SMB configuration changes not permitted while cluster is unhealthy")
-
             await self.middleware.call('smb.reg_update', new)
             await self._service_change(self._config.service, 'restart')
 
@@ -876,10 +888,7 @@ class SharingSMBService(SharingService):
         `auxsmbconf` is a string of additional smb4.conf parameters not covered by the system's API.
         """
         ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
-        if ha_mode == SMBHAMODE.CLUSTERED:
-            ctdb_healthy = await self.middleware.call('ctdb.general.healthy')
-            if not ctdb_healthy:
-                raise CallError("SMB configuration changes not permitted while cluster is unhealthy")
+        await self.middleware.call("smb.cluster_check")
 
         verrors = ValidationErrors()
         path = data['path']
@@ -934,11 +943,8 @@ class SharingSMBService(SharingService):
         """
         Update SMB Share of `id`.
         """
+        await self.middleware.call("smb.cluster_check")
         ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
-        if ha_mode == SMBHAMODE.CLUSTERED:
-            ctdb_healthy = await self.middleware.call('ctdb.general.healthy')
-            if not ctdb_healthy:
-                raise CallError("SMB share changes not permitted while cluster is unhealthy.")
 
         verrors = ValidationErrors()
         path = data.get('path')
@@ -1073,12 +1079,8 @@ class SharingSMBService(SharingService):
         Delete SMB Share of `id`. This will forcibly disconnect SMB clients
         that are accessing the share.
         """
+        await self.middleware.call("smb.cluster_check")
         ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
-        if ha_mode == SMBHAMODE.CLUSTERED:
-            ctdb_healthy = await self.middleware.call('ctdb.general.healthy')
-            if not ctdb_healthy:
-                raise CallError("SMB share changes not permitted while cluster is unhealthy.")
-
         if ha_mode != SMBHAMODE.CLUSTERED:
             share = await self._get_instance(id)
             result = await self.middleware.call('datastore.delete', self._config.datastore, id)

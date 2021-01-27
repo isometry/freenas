@@ -61,6 +61,7 @@ async def render(service, middleware):
         await write_keytab(db_keytabname, db_keytabfile)
 
     if osc.IS_LINUX:
-        if os.path.exists(keytabfile):
-            os.remove(keytabfile)
+        with contextlib.suppress(OSError):
+            os.unlink(keytabfile)
+
         os.rename("/etc/mit_tmp.keytab", keytabfile)

@@ -596,12 +596,9 @@ class IdmapDomainService(CRUDService):
         `RID` backend options:
         `sssd_compat` generate idmap low range based on same algorithm that SSSD uses by default.
         """
+        await self.middleware.call("smb.cluster_check")
         verrors = ValidationErrors()
         ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
-        if ha_mode == SMBHAMODE.CLUSTERED:
-            ctdb_healthy = await self.middleware.call('ctdb.general.healthy')
-            if not ctdb_healthy:
-                raise CallError("Idmap configuration may only be modified when cluster is healthy")
 
         old = await self.query()
         if data['name'] in [x['name'] for x in old]:
@@ -664,11 +661,8 @@ class IdmapDomainService(CRUDService):
         """
         Update a domain by id.
         """
+        await self.middleware.call("smb.cluster_check")
         ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
-        if ha_mode == SMBHAMODE.CLUSTERED:
-            ctdb_healthy = await self.middleware.call('ctdb.general.healthy')
-            if not ctdb_healthy:
-                raise CallError("Idmap configuration may only be modified when cluster is healthy")
 
         old = await self.query([('id', '=', id)], {'get': True, 'extra': {'ha_mode': ha_mode.name}})
         new = old.copy()
@@ -751,16 +745,12 @@ class IdmapDomainService(CRUDService):
         In case of registry config for clustered server, this will remove all smb4.conf
         entries for the domain associated with the id.
         """
-        ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
-        if ha_mode == SMBHAMODE.CLUSTERED:
-            ctdb_healthy = await self.middleware.call('ctdb.general.healthy')
-            if not ctdb_healthy:
-                raise CallError("Idmap configuration may only be modified when cluster is healthy")
-
+        await self.middleware.call("smb.cluster_check")
         if id <= 5:
             entry = await self._get_instance(id)
             raise CallError(f'Deleting system idmap domain [{entry["name"]}] is not permitted.', errno.EPERM)
 
+        ha_mode = SMBHAMODE[(await self.middleware.call('smb.get_smb_ha_mode'))]
         if ha_mode != SMBHAMODE.CLUSTERED:
             return await self.middleware.call("datastore.delete", self._config.datastore, id)
 
