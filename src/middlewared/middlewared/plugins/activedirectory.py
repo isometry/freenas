@@ -587,7 +587,12 @@ class ActiveDirectoryService(ConfigService):
         ad config to secrets.tdb.
         """
         if ha_mode != SMBHAMODE.CLUSTERED:
-            await super().update(old['id'], new)
+            id = new.pop("id")
+            await self.middleware.call(
+                'datastore.update',
+                self._config.datastore,
+                id, new, {'prefix': 'ad_'}
+            )
         else:
             """
             Write subset of our keys to secrets.tdb. This is replicated to
